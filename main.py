@@ -5,7 +5,7 @@ import math
 st.set_page_config(page_title="수학 & 정적분 계산기", page_icon="∫")
 
 st.title("🧮 수학 & 정적분 계산기")
-st.markdown("사칙연산부터 이차함수 정적분까지 한곳에서 계산하세요.")
+st.markdown("이차함수의 계수와 적분 범위를 **정수**로 입력하여 계산합니다.")
 st.divider()
 
 # 메인 메뉴 (연산 종류 선택)
@@ -18,33 +18,40 @@ operation = st.selectbox(
 )
 
 # ---------------------------------------------------------
-# 1. 이차함수 정적분 모드
+# 1. 이차함수 정적분 모드 (입력값 정수 변경)
 # ---------------------------------------------------------
 if operation == "이차함수 정적분 (Definite Integral)":
+    
+    
+
+[Image of geometric interpretation of definite integral area under curve]
+
+
     st.subheader("∫ 이차함수 정적분 계산")
     st.markdown(r"함수식: $f(x) = ax^2 + bx + c$")
+    st.info("💡 계수와 적분 범위는 정수만 입력 가능합니다.")
     
-    # 입력 1: 이차함수 계수 (a, b, c)
-    st.markdown("**1. 계수 입력**")
+    # 입력 1: 이차함수 계수 (a, b, c) -> 정수 입력(value=1, step=1)
+    st.markdown("**1. 계수 입력 (정수)**")
     col1, col2, col3 = st.columns(3)
     with col1:
-        a = st.number_input("a (x²의 계수)", value=1.0, step=0.5, format="%.2f")
+        a = st.number_input("a (x²의 계수)", value=1, step=1)
     with col2:
-        b = st.number_input("b (x의 계수)", value=0.0, step=0.5, format="%.2f")
+        b = st.number_input("b (x의 계수)", value=0, step=1)
     with col3:
-        c = st.number_input("c (상수항)", value=0.0, step=0.5, format="%.2f")
+        c = st.number_input("c (상수항)", value=0, step=1)
         
-    # 입력 2: 적분 범위 (시작, 끝)
-    st.markdown("**2. 적분 범위 입력**")
+    # 입력 2: 적분 범위 (시작, 끝) -> 정수 입력
+    st.markdown("**2. 적분 범위 입력 (정수)**")
     range_col1, range_col2 = st.columns(2)
     with range_col1:
-        x_start = st.number_input("적분 시작점 (x₁)", value=0.0, step=1.0)
+        x_start = st.number_input("적분 시작점 (x₁)", value=0, step=1)
     with range_col2:
-        x_end = st.number_input("적분 끝점 (x₂)", value=5.0, step=1.0)
+        x_end = st.number_input("적분 끝점 (x₂)", value=5, step=1)
 
     # 계산 버튼
     if st.button("적분 계산하기", type="primary"):
-        # 적분 함수 정의: F(x) = (a/3)x^3 + (b/2)x^2 + cx
+        # 적분 함수 정의
         def integral_func(x, a, b, c):
             return (a / 3) * (x ** 3) + (b / 2) * (x ** 2) + (c * x)
 
@@ -53,8 +60,7 @@ if operation == "이차함수 정적분 (Definite Integral)":
         result_start = integral_func(x_start, a, b, c)
         final_result = result_end - result_start
         
-        # 수식 문자열 생성 (보기 좋게 다듬기)
-        # 음수 처리를 위해 괄호 등을 고려하거나 간단히 표시
+        # 수식 문자열 생성
         poly_str = f"{a}x^2 + {b}x + {c}".replace("+-", "- ").replace("+ -", "- ")
         
         st.success("계산 완료!")
@@ -65,15 +71,21 @@ if operation == "이차함수 정적분 (Definite Integral)":
         $$
         """)
         
-        with st.expander("계산 과정 보기"):
-            st.write("부정적분 함수 $F(x) = \\frac{a}{3}x^3 + \\frac{b}{2}x^2 + cx$")
+        with st.expander("계산 과정 상세 보기"):
+            st.write("부정적분 함수:")
             st.latex(r"F(x) = \frac{" + str(a) + r"}{3}x^3 + \frac{" + str(b) + r"}{2}x^2 + " + str(c) + "x")
-            st.write(f"$F({x_end}) = {result_end:.4f}$")
-            st.write(f"$F({x_start}) = {result_start:.4f}$")
-            st.write(f"최종 값: ${result_end:.4f} - {result_start:.4f} = {final_result:.4f}$")
+            
+            st.markdown(f"**1. 구간 끝점 대입 ($x = {x_end}$):**")
+            st.latex(f"F({x_end}) = {result_end:.4f}")
+            
+            st.markdown(f"**2. 구간 시작점 대입 ($x = {x_start}$):**")
+            st.latex(f"F({x_start}) = {result_start:.4f}")
+            
+            st.markdown("**3. 최종 계산:**")
+            st.latex(f"{result_end:.4f} - {result_start:.4f} = {final_result:.4f}")
 
 # ---------------------------------------------------------
-# 2. 기본 연산 모드 (이전 코드 유지)
+# 2. 기본 연산 모드 (실수 지원 유지)
 # ---------------------------------------------------------
 else:
     st.subheader("🧮 사칙연산 및 공학용 계산")
