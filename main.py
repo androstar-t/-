@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import os # 경로 설정을 위해 추가
 
 # 페이지 기본 설정
 st.set_page_config(
@@ -14,23 +15,29 @@ st.set_page_config(
 # ==============================================
 def run_world_population_analysis():
     st.header("🌍 연도별 세계 인구 분석")
-    st.markdown("CSV 파일을 기반으로 연도별 세계 인구 분포를 지도에 시각화합니다.")
+    st.markdown("루트 폴더의 CSV 파일을 기반으로 연도별 세계 인구 분포를 지도에 시각화합니다.")
 
-    # 1. 데이터 로드 (world_population.csv 파일이 있어야 함)
-    data_file = 'world_population.csv'
+    # 1. 데이터 로드 (경로 설정 강화)
+    # 현재 실행 중인 파일(main.py)이 있는 폴더 경로를 찾습니다.
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # 루트 폴더에 있는 파일 경로를 생성합니다.
+    file_path = os.path.join(current_dir, 'world_population.csv')
+
     try:
-        df = pd.read_csv(data_file)
+        df = pd.read_csv(file_path)
     except FileNotFoundError:
-        st.error(f"'{data_file}' 파일을 찾을 수 없습니다. 같은 폴더에 데이터 파일을 준비해주세요.")
+        st.error(f"파일을 찾을 수 없습니다. 루트 폴더에 'world_population.csv' 파일이 있는지 확인해주세요.\n\n경로: {file_path}")
         return
     except Exception as e:
         st.error(f"데이터 로드 중 오류가 발생했습니다: {e}")
         return
 
     # 2. 연도 선택 드랍박스 만들기
-    # 데이터에서 유일한 연도 목록을 가져와 정렬
     available_years = sorted(df['year'].unique(), reverse=True)
-    selected_year = st.selectbox("분석할 연도를 선택하세요:", available_years)
+    
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        selected_year = st.selectbox("분석할 연도를 선택하세요:", available_years)
 
     # 3. 선택한 연도로 데이터 필터링
     filtered_df = df[df['year'] == selected_year].copy()
@@ -40,80 +47,67 @@ def run_world_population_analysis():
     # ==============================================================================
     # 핵심 기능: 인구수 구간 설정 및 색상 매핑 로직
     # ==============================================================================
-    # 인구 규모가 매우 다르므로 로그 스케일 대신 이해하기 쉬운 이산적인 구간(Bin)을 정의합니다.
-    # 구간 정의: 1천만 미만, 1천만~5천만, 5천만~1억, 1억~5억, 5억 이상
-
+    
     def categorize_population(pop):
-        if pop < 10_000_000:
-            return '< 1천만'
-        elif pop < 50_000_000:
-            return '1천만 - 5천만'
-        elif pop < 100_000_000:
-            return '5천만 - 1억'
-        elif pop < 500_000_000:
-            return '1억 - 5억'
-        else:
-            return '> 5억'
+        if pop < 10_000_000: return '< 1천만'
+        elif pop < 50_000_000: return '1천만 - 5천만'
+        elif pop < 100_000_000: return '5천만 - 1억'
+        elif pop < 500_000_000: return '1억 - 5억'
+        else: return '> 5억'
 
-    # 필터링된 데이터프레임에 새로운 '인구구간' 컬럼 추가
+    # 데이터프레임에 구간 컬럼 추가
     filtered_df['Population_Bracket'] = filtered_df['population'].apply(categorize_population)
 
-    # 범례 순서를 논리적으로 맞추기 위해 카테고리형 데이터로 변환 및 순서 지정
+    # 범례 순서 지정
     bracket_order = ['< 1천만', '1천만 - 5천만', '5천만 - 1억', '1억 - 5억', '> 5억']
     filtered_df['Population_Bracket'] = pd.Categorical(
         filtered_df['Population_Bracket'], categories=bracket_order, ordered=True
     )
 
     # ==============================================================================
-    # 세계지도 시각화 (Plotly Express 사용)
+    # 세계지도 시각화 (Plotly Express)
     # ==============================================================================
-    # 구간별로 적용할 색상 팔레트 정의 (연한색 -> 진한색)
+    # 구간별 색상 정의
     color_discrete_map = {
-        '< 1천만': '#ffffd4',      # 매우 연한 노랑
+        '< 1천만': '#ffffd4',      # 연한 노랑
         '1천만 - 5천만': '#fed98e', # 연한 주황
         '5천만 - 1억': '#fe9929',   # 중간 주황
-        '1억 - 5억': '#d95f0e',     # 진한 주황/빨강
-        '> 5억': '#993404'        # 매우 진한 빨강/갈색
+        '1억 - 5억': '#d95f0e',     # 진한 주황
+        '> 5억': '#993404'        # 갈색/진한 빨강
     }
 
     fig = px.choropleth(
         filtered_df,
-        locations="iso_alpha",         # ISO 3자리 국가 코드 사용 (지도 매핑용)
-        color="Population_Bracket",    # 인구 구간 컬럼을 기준으로 색칠
-        hover_name="country",          # 마우스 오버 시 국가명 표시
-        hover_data={"population": ":,"}, # 마우스 오버 시 인구수 표시 (천단위 콤마)
-        color_discrete_map=color_discrete_map, # 커스텀 색상 적용
-        category_orders={"Population_Bracket": bracket_order}, # 범례 순서 강제 지정
-        projection="natural earth",    # 지도 투영법
-        title=f"{selected_year}년 국가별 인구 규모"
+        locations="iso_alpha",
+        color="Population_Bracket",
+        hover_name="country",
+        hover_data={"population": ":,"},
+        color_discrete_map=color_discrete_map,
+        category_orders={"Population_Bracket": bracket_order},
+        projection="natural earth",
+        title=f"{selected_year}년 국가별 인구 규모 (구간별 색상 구분)"
     )
 
-    # 지도 레이아웃 조정 및 표시
     fig.update_layout(margin={"r":0,"t":40,"l":0,"b":0}, height=600)
     st.plotly_chart(fig, use_container_width=True)
 
-    # (선택사항) 필터링된 원본 데이터 표시
-    with st.expander(f"{selected_year}년 데이터 보기"):
-        st.dataframe(filtered_df.sort_values(by='population', ascending=False))
+    with st.expander(f"{selected_year}년 데이터 상세 보기"):
+        st.dataframe(filtered_df[['country', 'year', 'population', 'Population_Bracket']].sort_values(by='population', ascending=False))
 
 
 # ==============================================
-# 메인 앱 구조 (사이드바 네비게이션)
+# 메인 앱 구조 (사이드바)
 # ==============================================
-
-# 사이드바 메뉴 구성
 st.sidebar.title("메뉴")
 app_mode = st.sidebar.radio(
     "이동할 페이지를 선택하세요:",
-    ["홈", "연도별 세계인구 분석"] # 요청하신 메뉴 추가
+    ["홈", "연도별 세계인구 분석"]
 )
 
-# 메인 화면 라우팅
 if app_mode == "홈":
     st.title("🏠 홈 페이지")
     st.write("왼쪽 사이드바에서 원하는 분석 기능을 선택해주세요.")
-    st.info("새로운 기능 추가: '연도별 세계인구 분석' 메뉴가 추가되었습니다.")
+    st.info("👈 '연도별 세계인구 분석' 메뉴를 선택하면 지도를 볼 수 있습니다.")
 
 elif app_mode == "연도별 세계인구 분석":
-    # 위에서 정의한 분석 함수 실행
     run_world_population_analysis()
