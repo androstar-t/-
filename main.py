@@ -22,11 +22,6 @@ operation = st.selectbox(
 # ---------------------------------------------------------
 if operation == "이차함수 정적분 (Definite Integral)":
     
-    
-
-[Image of geometric interpretation of definite integral area under curve]
-
-
     st.subheader("∫ 이차함수 정적분 계산")
     st.markdown(r"함수식: $f(x) = ax^2 + bx + c$")
     st.info("💡 계수와 적분 범위는 정수만 입력 가능합니다.")
