@@ -4,112 +4,147 @@ import plotly.express as px
 import os
 
 # -----------------------------------------------------------------------------
-# 1. 페이지 기본 설정
+# 1. 페이지 기본 설정 (무조건 맨 처음에 실행되어야 함)
 # -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="데이터 분석 앱",
-    page_icon="📊",
+    page_title="세계 인구 분석 앱",
+    page_icon="🌏",
     layout="wide"
 )
 
 # -----------------------------------------------------------------------------
-# 2. 기능 함수 정의: 연도별 세계인구 분석
+# 2. 데이터 로드 및 전처리 함수
 # -----------------------------------------------------------------------------
-def run_world_population_analysis():
-    st.header("🌍 연도별 세계 인구 분석")
-    st.markdown("업로드된 CSV 파일(`world_population.csv`)을 분석하여 연도별 변화를 시각화합니다.")
-
-    # [1] 데이터 로드
+@st.cache_data  # 데이터를 매번 다시 읽지 않도록 캐싱(속도 향상)
+def load_and_process_data():
+    # 현재 파일(main.py)이 있는 위치를 기준으로 CSV 경로 설정
     current_dir = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(current_dir, 'world_population.csv')
 
+    if not os.path.exists(file_path):
+        return None, f"파일을 찾을 수 없습니다: {file_path}"
+
     try:
         df = pd.read_csv(file_path)
-        
         # 컬럼명 앞뒤 공백 제거
         df.columns = df.columns.str.strip()
         
-        # 파일 구조 확인 (업로드된 파일 형식인지 체크)
-        if 'CCA3' not in df.columns or '2022 Population' not in df.columns:
-            st.error("CSV 파일 형식이 예상과 다릅니다. 'CCA3' 및 'YYYY Population' 컬럼이 필요합니다.")
-            st.write(f"현재 데이터 컬럼: {list(df.columns)}")
+        # [데이터 구조 변경] Wide Format -> Long Format
+        # "2022 Population", "2020 Population" 등의 컬럼을 찾습니다.
+        year_cols = [c for c in df.columns if 'Population' in c and c[0].isdigit()]
+        
+        if not year_cols:
+            return None, "인구 데이터 컬럼(예: 2022 Population)을 찾을 수 없습니다."
+
+        # 데이터 재구조화 (Melt)
+        # 고정할 컬럼: 국가코드(CCA3), 국가명(Country/Territory), 대륙(Continent)
+        id_vars = ['CCA3', 'Country/Territory', 'Continent']
+        # 만약 CSV에 이 컬럼들이 없으면 에러 방지를 위해 있는 것만 사용
+        existing_ids = [c for c in id_vars if c in df.columns]
+        
+        df_melted = df.melt(
+            id_vars=existing_ids, 
+            value_vars=year_cols,
+            var_name='Year_Column', 
+            value_name='Population'
+        )
+        
+        # "2022 Population" -> 2022 (정수형 연도 추출)
+        df_melted['Year'] = df_melted['Year_Column'].str.extract(r'(\d{4})').astype(int)
+        
+        return df_melted, None
+
+    except Exception as e:
+        return None, str(e)
+
+# -----------------------------------------------------------------------------
+# 3. 화면 UI 구성
+# -----------------------------------------------------------------------------
+def main():
+    # 사이드바 메뉴
+    st.sidebar.title("메뉴")
+    menu = st.sidebar.radio("이동할 페이지:", ["홈", "연도별 세계인구 분석"])
+
+    # === [홈 페이지] ===
+    if menu == "홈":
+        st.title("🏠 세계 인구 데이터 분석 홈")
+        st.markdown("""
+        ### 환영합니다! 👋
+        이 앱은 **세계 인구 데이터**를 시각적으로 분석하는 도구입니다.
+        
+        왼쪽 사이드바에서 **'연도별 세계인구 분석'**을 선택하면 
+        지도를 통해 인구 분포를 확인할 수 있습니다.
+        """)
+        st.info("👈 왼쪽 메뉴를 클릭해보세요.")
+
+    # === [분석 페이지] ===
+    elif menu == "연도별 세계인구 분석":
+        st.header("🌍 연도별 세계 인구 지도")
+        
+        # 데이터 로드 시도
+        with st.spinner("데이터를 불러오는 중입니다..."):
+            df, error_msg = load_and_process_data()
+        
+        # 에러 발생 시 처리
+        if error_msg:
+            st.error(f"❌ 오류 발생: {error_msg}")
+            st.warning("프로젝트 폴더(루트)에 'world_population.csv' 파일이 있는지 확인해주세요.")
             return
 
-    except FileNotFoundError:
-        st.error(f"❌ 파일을 찾을 수 없습니다.\n경로: {file_path}")
-        return
-    except Exception as e:
-        st.error(f"❌ 데이터 로드 오류: {e}")
-        return
+        # 정상 로드 시 UI 표시
+        # 1. 연도 선택
+        year_list = sorted(df['Year'].unique(), reverse=True)
+        selected_year = st.selectbox("📅 분석할 연도를 선택하세요", year_list)
 
-    # [2] 데이터 전처리 (Wide -> Long 변환)
-    # 업로드된 파일은 연도가 컬럼으로 되어 있으므로, 이를 행(Row)으로 변환해야 그래프를 그리기 좋습니다.
-    
-    # 1. 연도별 인구 컬럼만 찾기 (예: "2022 Population")
-    year_columns = [col for col in df.columns if 'Population' in col and col[0].isdigit()]
-    
-    # 2. pd.melt를 사용하여 재구조화 (Unpivot)
-    # id_vars: 고정할 컬럼 (국가명, 국가코드, 대륙)
-    df_melted = df.melt(
-        id_vars=['Country/Territory', 'CCA3', 'Continent'], 
-        value_vars=year_columns,
-        var_name='Year_Column', 
-        value_name='Population'
-    )
-    
-    # 3. '2022 Population' 문자열에서 '2022' 숫자만 추출하여 'Year' 컬럼 생성
-    df_melted['Year'] = df_melted['Year_Column'].str.split().str[0].astype(int)
+        # 2. 데이터 필터링
+        filtered_df = df[df['Year'] == selected_year].copy()
 
-    # [3] 사용자 입력 (연도 선택)
-    available_years = sorted(df_melted['Year'].unique(), reverse=True)
-    
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        selected_year = st.selectbox("분석할 연도를 선택하세요:", available_years)
+        # 3. 인구 구간 설정 (색상 구분용)
+        def get_bracket(pop):
+            if pop < 1_000_000: return '< 100만'
+            elif pop < 10_000_000: return '100만 - 1천만'
+            elif pop < 50_000_000: return '1천만 - 5천만'
+            elif pop < 100_000_000: return '5천만 - 1억'
+            elif pop < 500_000_000: return '1억 - 5억'
+            else: return '> 5억'
 
-    # [4] 선택된 연도 데이터 필터링
-    filtered_df = df_melted[df_melted['Year'] == selected_year].copy()
+        filtered_df['Range'] = filtered_df['Population'].apply(get_bracket)
+        
+        # 범례 순서 정렬
+        bracket_order = ['< 100만', '100만 - 1천만', '1천만 - 5천만', '5천만 - 1억', '1억 - 5억', '> 5억']
+        
+        # 4. 지도 그리기
+        color_map = {
+            '< 100만': '#f7fcf5',
+            '100만 - 1천만': '#e5f5e0',
+            '1천만 - 5천만': '#a1d99b',
+            '5천만 - 1억': '#41ab5d',
+            '1억 - 5억': '#238b45',
+            '> 5억': '#005a32'
+        }
 
-    st.subheader(f"📅 {selected_year}년 세계 인구 현황")
+        fig = px.choropleth(
+            filtered_df,
+            locations="CCA3",            # 국가 코드
+            color="Range",               # 색상 기준
+            hover_name="Country/Territory",
+            hover_data={"Population": ":,"},
+            color_discrete_map=color_map,
+            category_orders={"Range": bracket_order},
+            projection="natural earth",
+            title=f"{selected_year}년 인구 분포"
+        )
+        
+        fig.update_layout(height=600, margin={"r":0,"t":40,"l":0,"b":0})
+        st.plotly_chart(fig, use_container_width=True)
 
-    # [5] 인구 구간(Bin) 설정 로직
-    def categorize_population(pop):
-        if pop < 10_000_000: return '< 1천만'
-        elif pop < 50_000_000: return '1천만 - 5천만'
-        elif pop < 100_000_000: return '5천만 - 1억'
-        elif pop < 500_000_000: return '1억 - 5억'
-        else: return '> 5억'
+        # 5. 데이터 표 확인
+        with st.expander("📊 데이터 상세 보기"):
+            st.dataframe(
+                filtered_df[['Country/Territory', 'CCA3', 'Population', 'Range']]
+                .sort_values(by='Population', ascending=False)
+            )
 
-    filtered_df['Population_Bracket'] = filtered_df['Population'].apply(categorize_population)
-
-    # 범례 순서 정렬
-    bracket_order = ['< 1천만', '1천만 - 5천만', '5천만 - 1억', '1억 - 5억', '> 5억']
-    filtered_df['Population_Bracket'] = pd.Categorical(
-        filtered_df['Population_Bracket'], categories=bracket_order, ordered=True
-    )
-
-    # [6] 지도 시각화 (Plotly Express)
-    color_map = {
-        '< 1천만': '#ffffd4',      # 연한 노랑
-        '1천만 - 5천만': '#fed98e', # 연한 주황
-        '5천만 - 1억': '#fe9929',   # 중간 주황
-        '1억 - 5억': '#d95f0e',     # 진한 주황
-        '> 5억': '#993404'        # 갈색/진한 빨강
-    }
-
-    fig = px.choropleth(
-        filtered_df,
-        locations="CCA3",              # 업로드된 파일의 국가 코드 컬럼명
-        color="Population_Bracket",
-        hover_name="Country/Territory", # 업로드된 파일의 국가명 컬럼명
-        hover_data={"Population": ":,"},
-        color_discrete_map=color_map,
-        category_orders={"Population_Bracket": bracket_order},
-        projection="natural earth",
-        title=f"{selected_year}년 국가별 인구 규모"
-    )
-    
-    fig.update_layout(margin={"r":0,"t":40,"l":0,"b":0}, height=600)
-    st.plotly_chart(fig, use_container_width=True)
-
-    #
+# 앱 실행 진입점
+if __name__ == "__main__":
+    main()
